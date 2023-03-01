@@ -11,6 +11,9 @@ class YawnDetect:
         self.mouth_points = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95,
                              185, 40, 39, 37, 0, 267, 269, 270, 409, 415, 310, 311, 312, 13, 82, 81, 42, 183, 78]
         self.mouth = []
+        self.upper = [8, 2]
+        self.lower = [28, 22]
+        self.side = [29, 38]
 
     def getMouthLandmark(self, frame, landmarks, width, height):
         mouth_points = []
@@ -25,9 +28,12 @@ class YawnDetect:
         return mouth_points
 
     def getYawnScore(self, mouthpoints):
-        A = dist.euclidean(mouthpoints[8], mouthpoints[28])
-        B = dist.euclidean(mouthpoints[2], mouthpoints[22])
-        C = dist.euclidean(mouthpoints[29], mouthpoints[38])
+        A = dist.euclidean(
+            mouthpoints[self.upper[0]], mouthpoints[self.lower[0]])
+        B = dist.euclidean(
+            mouthpoints[self.upper[1]], mouthpoints[self.lower[1]])
+        C = dist.euclidean(
+            mouthpoints[self.side[0]], mouthpoints[self.side[1]])
         mar = (A+B)/2*C
         return mar/1000
 
