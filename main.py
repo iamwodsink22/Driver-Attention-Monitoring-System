@@ -4,58 +4,66 @@ import mediapipe as mp
 import numpy as np
 from Score_Evaluation import Score_Evaluation
 from HeadOrientation import HeadOrientation
+from YawnDetection import YawnDetect
+from audio import speak
+
+
 def process_face_mediapipe(frame):
 
     results = faceMesh.process(frame)
     return results.multi_face_landmarks
 
 
-
 camera_matrix = np.array(
     [[534.07088364,   0.,         341.53407554],
- [  0.,         534.11914595, 232.94565259],
- [  0.,           0. ,          1.        ]], dtype="double")
+     [0.,         534.11914595, 232.94565259],
+        [0.,           0.,          1.]], dtype="double")
 
 # distortion coefficients obtained from the camera calibration script, using a 9x6 chessboard
 dist_coeffs = np.array(
     [[-2.92971637e-01,  1.07706962e-01,  1.31038376e-03, -3.11018781e-05,
-   4.34798110e-02]], dtype="double")
+      4.34798110e-02]], dtype="double")
 
 
 # camera_matrix = None
 # dist_coeffs = None
 # instantiaiont
-eye_detector = EyeDetector(showProcessing= False)
+eye_detector = EyeDetector(showProcessing=False)
+yawn_detector = YawnDetect()
 # score_evaluation = Score_Evaluation(capture_fps = 11, EAR_THRESHOLD= 0.15, EAR_TIME_THRESHOLD=2, GAZE_THRESHOLD=0.2, GAZE_TIME_THRESHOLD= 2, PITCH_THRESHOLD=35, YAW_THRESHOLD=28, POSE_TIME_THRESHOLD= 2.5)
-score_evaluation = Score_Evaluation(11, ear_tresh=0.15, ear_time_tresh=2, gaze_tresh=0.3,
-                       gaze_time_tresh=2, pitch_tresh=35, yaw_tresh=28, pose_time_tresh=2.5, verbose=False)
+score_evaluation = Score_Evaluation(11, ear_tresh=0.18, ear_time_tresh=3.0, gaze_tresh=0.2,
+                                    gaze_time_tresh=2, pitch_tresh=35, yaw_tresh=28, pose_time_tresh=2.5, verbose=False)
+yawncount = 0
 if camera_matrix is not None and dist_coeffs is not None:
-    headOrientation = HeadOrientation(camera_matrix= camera_matrix,dist_coeffs=dist_coeffs,show_axis=True)
+    headOrientation = HeadOrientation(
+        camera_matrix=camera_matrix, dist_coeffs=dist_coeffs, show_axis=True)
 else:
-    headOrientation = HeadOrientation(show_axis= True)
-cap = cv2.VideoCapture('./yawning.mp4')
+    headOrientation = HeadOrientation(show_axis=True)
+cap = cv2.VideoCapture(0)
 
-# window_width = 800
-window_width = 350
+window_width = 800
+
 frame_counter = 0
 
 mpFaceMesh = mp.solutions.face_mesh
-faceMesh = mpFaceMesh.FaceMesh(max_num_faces = 1)
+faceMesh = mpFaceMesh.FaceMesh(max_num_faces=1)
 avg_gaze_score = None
 
 while(cap.isOpened()):
     ret, img = cap.read()
+    img = cv2.flip(img, 1)
     if ret:
-        new_frame = np.zeros((500, 500, 3), np.uint8)
+        # new_frame = np.zeros((500, 500, 3), np.uint8)
         frame_counter = frame_counter + 1
-        h,w,c = img.shape
+        h, w, c = img.shape
         # print(img.shape)
         width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         # print("width is ", width)
         # print("height is ", height)
-        cv2.namedWindow("Resized_Window", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Resized_Window", (window_width, int((height / width) * window_width)))
+        cv2.namedWindow("Monitoring System", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Monitoring System", (window_width,
+                         int((height / width) * window_width)))
 
         grayscale = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -63,17 +71,30 @@ while(cap.isOpened()):
 
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         multi_face_landmarks = process_face_mediapipe(imgRGB)
-        eye_detector.landmark_display_and_coordinates_noted(img, multi_face_landmarks, width , height)
+        eye_detector.landmark_display_and_coordinates_noted(
+            img, multi_face_landmarks, width, height)
+
         eye_detector.RegionOfInterest_display_and_tracked(grayscale, img)
 
-        gaze_eye_left, left_eye =eye_detector.Gaze_calculation(eye_detector.region_of_interest_left)
+        gaze_eye_left, left_eye = eye_detector.Gaze_calculation(
+            eye_detector.region_of_interest_left)
+        # print(gaze_eye_left)
         # eye_detector.Gaze_calculation(eye_detector.region_of_interest_left)
-        gaze_eye_right, right_eye = eye_detector.Gaze_calculation(eye_detector.region_of_interest_right)
+        gaze_eye_right, right_eye = eye_detector.Gaze_calculation(
+            eye_detector.region_of_interest_right)
+        # print(gaze_eye_right)
 
-        right_eye_pupil = (eye_detector.positionEstimator(eye_detector.region_of_interest_right))
+        right_eye_pupil = (eye_detector.positionEstimator(
+            eye_detector.region_of_interest_right))
 
-        left_eye_pupil = (eye_detector.positionEstimator(eye_detector.region_of_interest_left))
-
+        left_eye_pupil = (eye_detector.positionEstimator(
+            eye_detector.region_of_interest_left))
+        mouth = yawn_detector.getMouthLandmark(
+            img, multi_face_landmarks, width, height)
+        mar_score = yawn_detector.getYawnScore(mouth)
+        yawn_detector.warning(img, mar_score)
+        print(mar_score)
+        print(len(mouth))
         if gaze_eye_left and gaze_eye_right:
 
             # computes the average gaze score for the 2 eyes
@@ -86,34 +107,36 @@ while(cap.isOpened()):
         EAR = eye_detector.get_EAR()
 
         frame_det, roll, pitch, yaw = headOrientation.get_pose(
-                    frame=img, landmarks=multi_face_landmarks, width = width, height = height)
+            frame=img, landmarks=multi_face_landmarks, width=width, height=height)
 
         tired, perclos_score = score_evaluation.get_PERCLOS(EAR)
-        
+
         # if right_eye_pupil:
         #     cv2.putText(img, "Right Eye :" + str(right_eye_pupil), (10, 400),
         #                         cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 1, cv2.LINE_AA)
-            
+
         # if left_eye_pupil:
         #     cv2.putText(img, "Left Eye :" + str(right_eye_pupil), (10, 350),
         #                         cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 1, cv2.LINE_AA)
 
-
-
         # print("The perclos score is ", perclos_score)
 
-        left_gaze = eye_detector.gaze_another_method(eye_detector.region_of_interest_left)
-        right_gaze = eye_detector.gaze_another_method(eye_detector.region_of_interest_right)
-        
+        left_gaze = eye_detector.gaze_another_method(
+            eye_detector.region_of_interest_left)
+        right_gaze = eye_detector.gaze_another_method(
+            eye_detector.region_of_interest_right)
+
         gaze_score = (left_gaze + right_gaze) / 2
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-        
-        
+
         if EAR is not None:
             cv2.putText(img, "EAR:" + str(round(EAR, 3)), (10, 50),
-                                cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 1, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 1, cv2.LINE_AA)
+        if mar_score is not None:
+            cv2.putText(img, f'MAR:{round(mar_score,3)}', (10, 75),
+                        cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 1, cv2.LINE_AA)
 
         # if avg_gaze_score is not None:
         #     cv2.putText(img, "Gaze Score:" + str(round(avg_gaze_score, 3)), (10, 80),
@@ -122,15 +145,14 @@ while(cap.isOpened()):
         if tired:
             cv2.putText(img, "TIRED!", (10, 280),
                         cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 1, cv2.LINE_AA)
-        else:
-            cv2.putText(img, "FRESH!", (10, 280),
-                        cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 1, cv2.LINE_AA)
-
+            speak('Be careful not to sleep')
+        # else:
+        #     cv2.putText(img, "FRESH!", (10, 280),
+        #                 cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 255), 1, cv2.LINE_AA)
 
         asleep, looking_away, distracted, right, center, left = score_evaluation.score_evaluate(
             EAR, avg_gaze_score, roll, pitch, yaw)
 
-        
         if right:
             cv2.putText(img, "Right!", (10, 400),
                         cv2.FONT_HERSHEY_PLAIN, 5, (0, 0, 255), 2, cv2.LINE_AA)
@@ -144,20 +166,21 @@ while(cap.isOpened()):
         if asleep:
             cv2.putText(img, "ASLEEP!", (10, 400),
                         cv2.FONT_HERSHEY_PLAIN, 5, (0, 0, 255), 2, cv2.LINE_AA)
+            speak('Open your eyes fast')
         if looking_away:
-            cv2.putText(img, "LOOKING AWAY!", (10, 350),
-                        cv2.FONT_HERSHEY_PLAIN, 5, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(img, "Pupil Not In Center!", (200, 450),
+                        cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 2, cv2.LINE_AA)
+
         if distracted:
             cv2.putText(img, "DISTRACTED!", (10, 400),
                         cv2.FONT_HERSHEY_PLAIN, 5, (0, 0, 255), 2, cv2.LINE_AA)
-            
-        cv2.imshow("Resized_Window", img)
-        
+
+        cv2.imshow("Monitoring System", img)
     else:
-        
+
         # print("The frame counter is ", frame_counter)
         # print(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
+
         if frame_counter == cap.get(cv2.CAP_PROP_FRAME_COUNT):
             frame_counter = 0
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -167,5 +190,3 @@ while(cap.isOpened()):
 
 cap.release()
 cv2.destroyAllWindows()
-
-
